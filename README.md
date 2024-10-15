@@ -30,7 +30,7 @@ See environment.yml
 2. Run the ImageNet100 script: ./run_imagenet100.sh
 3. Run the CIFAR100 script: ./run_cifar100.sh
 
-### *Implementation of TaskBalancedBN(TBBN) and other normalization layers*
+### *Implementation Code of TaskBalancedBN(TBBN) and Other Normalization Layers*
 
 You can find the TBBN code in './TaskBalancedBN/src/networks/tbbn.py' and the code for other normalization layers in './TaskBalancedBN/src/networks/norm_layers.py.'
 
@@ -38,7 +38,6 @@ You can find the TBBN code in './TaskBalancedBN/src/networks/tbbn.py' and the co
 
 This code is implemented based on the framework for analysis of class-incremental learning ([FACIL](https://github.com/mmasana/FACIL)).
 
-#### Note: For ViT models trained on CIFAR-100, we used the pre-trained model from HuggingFace(Ahmed9275/Vit-Cifar100).
 
 -------
 ## Citation

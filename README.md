@@ -23,7 +23,7 @@ See environment.yml
 3. Navigate to the project directory: cd TaskBalancedBN
 4. Create a folder for storing results: mkdir results data
 5. Download [ImageNet_config.zip](https://drive.google.com/file/d/11Sx_iuaQCLhEM933ZUNsR3nBAHllJdUe/view?usp=share_link) and unzip this file in './data/'.
-6. Update 'YOUR_IMAGENET_DATASET_DIRECTORY' in 63 line of './src/datasets/base_dataset.py'.
+6. Update 'YOUR_IMAGENET_DATASET_DIRECTORY' in Line 63 of './src/datasets/base_dataset.py'.
 
 ### Run Class-Incremental Learning Experiments
 1. Navigate to the project directory: cd TaskBalancedBN/src/

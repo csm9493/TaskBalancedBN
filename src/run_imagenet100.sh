@@ -27,7 +27,7 @@ CUDA_VISIBLE_DEVICES=$GPU_NUM python3 main_incremental.py --gpu 0 --seed $SEED_N
 ## Algorithm: lucir
 EXP_NAME="CustomtBN_batch_size_${BATCH}_ratio_${RATIO}_exemplar_size_${EXEMPLAR_SIZE}_resnet18_seed_${SEED_NUM}"
 
-CUDA_VISIBLE_DEVICES=$GPU_NUM python3 main_incremental.py --gpu 0 --seed $SEED_NUM --approach 'lucir' --datasets 'imagenet100' --network 'resnet18' --batch-size $BATCH --num-tasks $NUM_TASKS --nepochs $EPOCHS  --num-exemplars $EXEMPLAR_SIZE --lr-factor 10 --weight-decay $WEIGHT_DECAY1 --exemplar-selection herding --num-workers 8 --exp-name $EXP_NAME --custom-split-bn --batch-ratio $RATIO --nc-first-task $NUM_FIRST_TASK 
+CUDA_VISIBLE_DEVICES=$GPU_NUM python3 main_incremental.py --gpu 0 --seed $SEED_NUM --approach 'lucir' --datasets 'imagenet100' --network 'resnet18' --batch-size $BATCH --num-tasks $NUM_TASKS --nepochs $EPOCHS  --num-exemplars $EXEMPLAR_SIZE --lr-factor 10 --weight-decay $WEIGHT_DECAY --exemplar-selection herding --num-workers 8 --exp-name $EXP_NAME --custom-split-bn --batch-ratio $RATIO --nc-first-task $NUM_FIRST_TASK 
 
 ## Algorithm: ssil
 EXP_NAME="CustomtBN_batch_size_${BATCH}_ratio_${RATIO}_exemplar_size_${EXEMPLAR_SIZE}_resnet18_seed_${SEED_NUM}"

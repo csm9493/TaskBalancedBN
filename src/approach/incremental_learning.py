@@ -8,7 +8,6 @@ from argparse import ArgumentParser
 from loggers.exp_logger import ExperimentLogger
 from datasets.exemplars_dataset import ExemplarsDataset
 
-from losses import SupConLoss, MoCoLoss, SwavLoss
 from itertools import cycle
 
 class Inc_Learning_Appr:
@@ -40,9 +39,6 @@ class Inc_Learning_Appr:
         self.fix_bn = fix_bn
         self.eval_on_train = eval_on_train
         self.optimizer = None
-        self.criterion_supconloss = SupConLoss(temperature=con_temp)
-        self.criterion_mocoloss = MoCoLoss()
-        self.criterion_swavloss = SwavLoss()
         self.con_alpha = con_alpha
         self.m = 0.99
         self.con_strategy = con_strategy
@@ -269,188 +265,130 @@ class Inc_Learning_Appr:
         if self.fix_bn and t > 0:
             self.model.freeze_bn()
             
-        if unsup_loader != None:
-            if len(trn_loader) >= len(unsup_loader):
-                unsup_loader = cycle(unsup_loader)
+
+        # if fix_batch used
+        if exemplars_loader != None:
+            if len(trn_loader) >= len(exemplars_loader):
+                exemplars_loader = cycle(exemplars_loader)
             else:
                 trn_loader = cycle(trn_loader)
-                
-            
-            iteration = 400
-            for i, data in enumerate(zip(trn_loader, unsup_loader)):
-                
-                if t == 0:
-                    iteration = i
-                
-                (images, targets), unsup_images = data
+            i=1
+            for i, data in enumerate(zip(trn_loader, exemplars_loader)):
 
-                if images.shape[0] != self.batch_size:
-                    continue
-                if unsup_images[0].shape[0] != self.batch_size or unsup_images[1].shape[0] != self.batch_size:
-                    continue
+                (current_images, current_targets), (previous_images, previous_targets) = data
 
+                if self.balanced_aug == True:
 
-                # Forward current model with current + mem dataset
-                outputs = self.model(images.to(self.device),return_features=False)
-                loss = self.criterion(t, outputs, targets.to(self.device))
-                
-                # Forward current model with unsuperivsed dataset (Contrastive learning)
-                unsup_images = torch.cat([unsup_images[0], unsup_images[1]], dim=0)
-                bsz = unsup_images.shape[0]//2
-                
-                outputs, f1, f2 = self.model(unsup_images.to(self.device), return_features = True) #( 128, 3000 ) ( batch*2 , prototypes)
-                #f1, f2 = torch.split(features, [bsz, bsz], dim=0)
-                #features = torch.cat([f1.unsqueeze(1), f2.unsqueeze(1)], dim=1)
-                
-                if self.con_strategy == 'MoCo':
-                    loss_cont = self.criterion_mocoloss(f1, f2)
-                elif self.con_strategy == 'SimCLR':
-                    features = torch.cat([f1.unsqueeze(1), f2.unsqueeze(1)], dim=1)
-                    loss_cont = self.criterion_supconloss(features)
-                elif self.con_strategy == 'Swav':
-                    use_the_queue = False
-                    features = torch.cat([f1.unsqueeze(1), f2.unsqueeze(1)], dim=1).detach()
-                    loss_cont = self.criterion_swavloss(f1, f2, outputs, self.queue, use_the_queue, self.model)
-                
-                loss = loss + loss_cont * self.con_alpha
+                    previous_images = torch.cat([previous_images[aug_i] for aug_i in range(t*3)], dim = 0)
+                    previous_targets = torch.cat([previous_targets for aug_i in range(t*3)], dim = 0)
+                    current_images = current_images[0]
 
-                # Backward
-                self.optimizer.zero_grad()
-                loss.backward()
-    #             avg_loss.append(loss.item())
-                torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.clipgrad)
-        
-                if iteration < 313: # 313 : args.freeze_prototypes_niters:
-                    for name, p in self.model.named_parameters():
-                        if "prototypes" in name:
-                            p.grad = None
-                            
-                self.optimizer.step()
-            
-        else:
-            # if fix_batch used
-            if exemplars_loader != None:
-                if len(trn_loader) >= len(exemplars_loader):
-                    exemplars_loader = cycle(exemplars_loader)
-                else:
-                    trn_loader = cycle(trn_loader)
-                i=1
-                for i, data in enumerate(zip(trn_loader, exemplars_loader)):
-                    
-                    (current_images, current_targets), (previous_images, previous_targets) = data
-                    
-                    if self.balanced_aug == True:
-                        
-                        previous_images = torch.cat([previous_images[aug_i] for aug_i in range(t*3)], dim = 0)
-                        previous_targets = torch.cat([previous_targets for aug_i in range(t*3)], dim = 0)
-                        current_images = current_images[0]
-                        
-                        print (previous_images.shape, previous_targets.shape)
-                    
-                    if self.seperate_batch:
-                        
-                        # Split_ver2 : Curr-wise norm, Prev-wise norm
-                        if True:
-                            print("Test for Split-ver2")
-                            if current_images.shape[0] != 48:
-                                continue
-                            if previous_images.shape[0] != 15:
-                                continue
-                            splits = 16
-                            C, H, W = current_images.shape[1], current_images.shape[2], current_images.shape[3]
-                            images = torch.cat([current_images.view(3, C*16, H, W), previous_images.view(3, C*5, H, W)], dim=1).view(63, C, H, W)
-                            targets = torch.cat([current_target.view(3, 16), previous_targets.view(3, 5)], dim=1).view(63)
-                            
-                            outputs = self.model(images.to(self.device))
-                            loss = self.criterion(t, outputs, targets.to(self.device))
-                        else:
+                    print (previous_images.shape, previous_targets.shape)
 
-                            if current_images.shape[0] != 48:
-                                continue
-                            if previous_images.shape[0] != 16:
-                                continue
-                            if i==1:
-                                print("Seperate batch")
-                                print("Current targets", current_targets)
-                                print("Previous targets", previous_targets)
+                if self.seperate_batch:
 
-                            current_outputs = self.model(current_images.to(self.device))
-                            loss_current = self.criterion(t, current_outputs, current_targets.to(self.device))
-                            previous_outputs = self.model(previous_images.to(self.device))
-                            loss_previous = self.criterion(t, previous_outputs, previous_targets.to(self.device))
-
-                            loss = loss_current + loss_previous
-                    else:
-                        
-                        if self.balanced_aug == False:
-                            if (current_images.shape[0] + previous_images.shape[0]) != self.batch_size:
-                                continue
-                        
-                        if torch.cuda.device_count() > 1:
-                            
-                            gpu_numbers = torch.cuda.device_count()
-                            
-                            images = torch.cat((torch.stack(current_images.chunk(gpu_numbers, dim=0), dim = 1), torch.stack(previous_images.chunk(gpu_numbers, dim=0), dim = 1)), dim = 0)
-                            targets = torch.cat((torch.stack(current_targets.chunk(gpu_numbers, dim=0), dim = 1), torch.stack(previous_targets.chunk(gpu_numbers, dim=0), dim = 1)), dim = 0)
-                            
-                            images = torch.cat([images[:,i,:] for i in range (gpu_numbers)])
-                            targets = torch.cat([targets[:,i] for i in range (gpu_numbers)])
-                            
-                        else:
-
-                            images = torch.cat((current_images, previous_images),dim=0)
-                            targets = torch.cat((current_targets, previous_targets) , dim=0)
-
+                    # Split_ver2 : Curr-wise norm, Prev-wise norm
+                    if True:
+                        print("Test for Split-ver2")
+                        if current_images.shape[0] != 48:
+                            continue
+                        if previous_images.shape[0] != 15:
+                            continue
+                        splits = 16
+                        C, H, W = current_images.shape[1], current_images.shape[2], current_images.shape[3]
+                        images = torch.cat([current_images.view(3, C*16, H, W), previous_images.view(3, C*5, H, W)], dim=1).view(63, C, H, W)
+                        targets = torch.cat([current_target.view(3, 16), previous_targets.view(3, 5)], dim=1).view(63)
 
                         outputs = self.model(images.to(self.device))
                         loss = self.criterion(t, outputs, targets.to(self.device))
+                    else:
 
-                    self.optimizer.zero_grad()
-                    
-                    loss.backward()
+                        if current_images.shape[0] != 48:
+                            continue
+                        if previous_images.shape[0] != 16:
+                            continue
+                        if i==1:
+                            print("Seperate batch")
+                            print("Current targets", current_targets)
+                            print("Previous targets", previous_targets)
 
-                    torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.clipgrad)
-                    
-                    self.optimizer.step()
-            else:
-                
-                
-                i=1
-                iteration = 0
-                #total_sum = torch.tensor([0,0,0], dtype=torch.double)
-                #num_tracked = 0
-                for images, targets in trn_loader:
+                        current_outputs = self.model(current_images.to(self.device))
+                        loss_current = self.criterion(t, current_outputs, current_targets.to(self.device))
+                        previous_outputs = self.model(previous_images.to(self.device))
+                        loss_previous = self.criterion(t, previous_outputs, previous_targets.to(self.device))
 
-                    # Forward current model
-                    if self.balanced_aug == True:
-                        
-                        images = images[0]
-                    
-                    if images.shape[0] != self.batch_size:
-                        continue
-                    
-                    
-                    #num_tracked += images.shape[0]
-                    #i += 1
+                        loss = loss_current + loss_previous
+                else:
+
+                    if self.balanced_aug == False:
+                        if (current_images.shape[0] + previous_images.shape[0]) != self.batch_size:
+                            continue
+
+                    if torch.cuda.device_count() > 1:
+
+                        gpu_numbers = torch.cuda.device_count()
+
+                        images = torch.cat((torch.stack(current_images.chunk(gpu_numbers, dim=0), dim = 1), torch.stack(previous_images.chunk(gpu_numbers, dim=0), dim = 1)), dim = 0)
+                        targets = torch.cat((torch.stack(current_targets.chunk(gpu_numbers, dim=0), dim = 1), torch.stack(previous_targets.chunk(gpu_numbers, dim=0), dim = 1)), dim = 0)
+
+                        images = torch.cat([images[:,i,:] for i in range (gpu_numbers)])
+                        targets = torch.cat([targets[:,i] for i in range (gpu_numbers)])
+
+                    else:
+
+                        images = torch.cat((current_images, previous_images),dim=0)
+                        targets = torch.cat((current_targets, previous_targets) , dim=0)
+
 
                     outputs = self.model(images.to(self.device))
+                    loss = self.criterion(t, outputs, targets.to(self.device))
 
-                    if True:
-                        loss = self.criterion(t, outputs, targets.to(self.device))
+                self.optimizer.zero_grad()
 
-                        self.optimizer.zero_grad()
+                loss.backward()
 
-                    
-                        loss.backward()
-                        
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.clipgrad)
 
-                        torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.clipgrad)
-                        self.optimizer.step()
-                    else:
-                        if i==1:
-                            print("No backward pass")
+                self.optimizer.step()
+        else:
+
+
+            i=1
+            iteration = 0
+            #total_sum = torch.tensor([0,0,0], dtype=torch.double)
+            #num_tracked = 0
+            for images, targets in trn_loader:
+
+                # Forward current model
+                if self.balanced_aug == True:
+
+                    images = images[0]
+
+                if images.shape[0] != self.batch_size:
+                    continue
+
+
+                #num_tracked += images.shape[0]
+                #i += 1
+
+                outputs = self.model(images.to(self.device))
+
+                if True:
+                    loss = self.criterion(t, outputs, targets.to(self.device))
+
+                    self.optimizer.zero_grad()
+
+
+                    loss.backward()
+
+
+                    torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.clipgrad)
+                    self.optimizer.step()
+                else:
                     if i==1:
-                        i+=1
+                        print("No backward pass")
+                if i==1:
+                    i+=1
 
     def eval(self, t, val_loader):
         """Contains the evaluation code"""

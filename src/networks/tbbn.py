@@ -124,12 +124,11 @@ class TaskBalancedBN(nn.BatchNorm2d):
         else:
 
             if self.training:
-                
                 N,C,H,W = input.shape
                 curr_dataset = (N // (self.batch_ratio + 1)) * self.batch_ratio
 
-                running_mean_split = self.running_mean
-                running_var_split = self.running_var
+                running_mean_split = self.running_mean.repeat(self.num_splits)
+                running_var_split = self.running_var.repeat(self.num_splits)
 
                 curr_batch = input[:curr_dataset,:,:,:]
                 mem_batch = input[curr_dataset:,:,:,:]
@@ -142,6 +141,19 @@ class TaskBalancedBN(nn.BatchNorm2d):
                 repeat_mean = concat_batch.mean([0, 2, 3])
                 repeat_var = concat_batch.var([0, 2, 3], unbiased=False)
 
+                n = concat_batch.numel() / concat_batch.size(1)
+
+                with torch.no_grad():
+
+                    running_mean_split = exponential_average_factor * repeat_mean\
+                        + (1 - exponential_average_factor) * running_mean_split
+
+                    running_var_split = exponential_average_factor * repeat_var* n / (n - 1)\
+                        + (1 - exponential_average_factor) * running_var_split
+
+                self.running_mean.data.copy_(running_mean_split.view(self.num_splits, C).mean(dim=0))
+                self.running_var.data.copy_(running_var_split.view(self.num_splits, C).mean(dim=0))
+
 #                 input = input.view(-1, C * self.num_splits, H, W)
 
                 concat_batch = (concat_batch - repeat_mean[None, :, None, None]) / (torch.sqrt(repeat_var[None, :, None, None] + self.eps))
@@ -152,22 +164,6 @@ class TaskBalancedBN(nn.BatchNorm2d):
                 reshaped_mem_batch = torch.mean(concat_batch[curr_dataset//self.num_splits:].view(-1, self.num_splits, C, H, W),  dim = 1)
 
                 input = torch.cat([reshaped_curr_batch, reshaped_mem_batch], dim = 0)
-
-                repeat_mean = input.mean([0, 2, 3])
-                repeat_var = input.var([0, 2, 3], unbiased=False)
-
-                n = input.numel() / input.size(1)
-
-                with torch.no_grad():
-
-                    running_mean_split = exponential_average_factor * repeat_mean\
-                        + (1 - exponential_average_factor) * running_mean_split
-
-                    running_var_split = exponential_average_factor * repeat_var* n / (n - 1)\
-                        + (1 - exponential_average_factor) * running_var_split
-
-                self.running_mean.data.copy_(running_mean_split)
-                self.running_var.data.copy_(running_var_split)
                 
             else:
                 
